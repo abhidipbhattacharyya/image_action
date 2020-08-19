@@ -1,0 +1,11 @@
+phoning
+playinginstrument
+reading
+ridingbike
+ridinghorse
+running
+takingphoto
+usingcomputer
+walking
+jumping
+other
