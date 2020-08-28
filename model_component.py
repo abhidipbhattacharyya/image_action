@@ -35,6 +35,11 @@ def attention(query, key, value, mask=None, dropout=None):
     p_attn = F.softmax(scores, dim = -1)
     if dropout is not None:
         p_attn = dropout(p_attn)
+
+    #print('frm attn func: Q {}'.format(query.size()))
+    #print('frm attn func: K {}'.format(key.size()))
+    #print('frm attn func: p_attn {}'.format(p_attn.size()))
+    #print('frm attn func: val {}'.format(value.size()))
     return torch.matmul(p_attn, value), p_attn
 
 def clones(module, N):
@@ -205,6 +210,7 @@ class Interaction_Network(nn.Module):
         self.in_channels = in_channels
         self.features = self.make_layers()
         self.avgpool = nn.AdaptiveAvgPool2d((7, 7))
+        self.conv1d = nn.Conv1d(49, in_channels, 1)
         if init_weights:
             self._initialize_weights()
 
@@ -213,6 +219,7 @@ class Interaction_Network(nn.Module):
         x = x.permute(0, 2, 3, 1)
         x = x.contiguous()
         x = x.view(x.size(0), -1, x.size(-1))
+        x = self.conv1d(x)
         return x
 
     def make_layers(self, batch_norm=False):
@@ -251,6 +258,7 @@ class Classifier(nn.Module):
         gx_dim  = output_dim * num_of_mixture
         self.num_of_mixture = num_of_mixture
         self.num_classes = num_classes
+        '''
         self.gate = nn.Sequential(
             nn.Linear(input_dim, 4096),
             nn.ReLU(True),
@@ -262,6 +270,7 @@ class Classifier(nn.Module):
             nn.Conv1d(num_obj, 1 , 1)
 
         )
+
         self.proba = nn.Sequential(
             nn.Linear(input_dim , 4096),
             nn.ReLU(True),
@@ -272,6 +281,23 @@ class Classifier(nn.Module):
             nn.Linear(4096, self.num_classes),
             nn.Conv1d(num_obj, num_of_mixture, 1)
         )
+        '''
+
+        self.gate = nn.Sequential(
+            nn.Conv1d(num_obj,1,1),
+            nn.Linear(input_dim, self.num_of_mixture),
+            nn.ReLU(True),
+            nn.Dropout(),
+            nn.Linear(self.num_of_mixture, self.num_of_mixture)
+        )
+
+        self.proba = nn.Sequential(
+            nn.Linear(input_dim, self.num_classes),
+            nn.ReLU(True),
+            nn.Dropout(),
+            nn.Conv1d(num_obj, self.num_of_mixture,1),
+        )
+
     def forward(self,x, label = None):
         #x = torch.flatten(x, 1)
         #print(x.size())
@@ -280,10 +306,12 @@ class Classifier(nn.Module):
         #print('gx shape {}'.format(g_x.size()))
         g_x = F.softmax(g_x, dim = -1) # bs x K
         p_yi_x = torch.sigmoid(self.proba(x)) # bs x num_of mix x num class
+        #print('p_yi_x shape {}'.format(p_yi_x.size()))
         #p_yi_x = torch.bernoulli(p_yi_x)
-        if label == None:
-            return g_x, p_yi_x
+        #if label == None:
+        return g_x, p_yi_x
 
+        '''
         else:
         #p_yi_x = p_yi_x.view(p_yi_x.size(0),-1,self.num_classes) # bs x K x num_of_class
             #print('p_yi_x shape {}'.format(p_yi_x.size()))
@@ -307,3 +335,4 @@ class Classifier(nn.Module):
             #print('h_x {}'.format(h_x.size()))
             #print(h_x)
             return g_x, p_y_x, h_x, p_yi_x
+        '''

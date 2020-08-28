@@ -13,6 +13,7 @@ import random
 from tqdm import tqdm
 from torch.utils.data.dataloader import DataLoader
 from evaluation import *
+from optimization import BertAdam
 
 class MIL:
     def __init__(self, args):
@@ -52,9 +53,18 @@ class MIL:
             self.model = nn.DataParallel(self.model)
 
 
-        self.criterion = Mixture_loss()
-        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.05, momentum=0.9, weight_decay = 0.1)
+        self.criterion = Mixture_loss(args.head)
+        #self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.05, momentum=0.9, weight_decay = 0.1)
 
+        if args.mode == 'train':
+            batch_per_epoch = len(self.data_loader)
+            print('batch per epoch ={}'.format(batch_per_epoch))
+            t_total = int(batch_per_epoch * args.epochs)
+            print('total iterations== {} ; warmup start = {}'.format(t_total, t_total*args.wstep))
+            self.optimizer = BertAdam(list(self.model.parameters()),
+                                 lr=args.learning_rate,
+                                 warmup=args.wstep,
+                                 t_total=t_total)#changing warmup from 0.1 to 0.3
     def train(self):
         print('training started')
         self.model.train()
@@ -66,9 +76,13 @@ class MIL:
             for imgs, subimgs, boxes, interaction_pattern, label_hot_vec in tqdm(self.data_loader):
                 self.optimizer.zero_grad()
                 imgs, subimgs, boxes, interaction_pattern, label_hot_vec = imgs.cuda(), subimgs.cuda(), boxes.cuda(), interaction_pattern.cuda(), label_hot_vec.cuda()
-                g_x, p_y_x, h_x, p_yi_x = self.model(imgs, subimgs, boxes, interaction_pattern, label_hot_vec)
+                g_x, p_yi_x = self.model(imgs, subimgs, boxes, interaction_pattern, label_hot_vec)
 
-                loss, em_loss, class_loss = self.criterion(h_x, g_x, p_y_x, p_yi_x,label_hot_vec)
+                loss, em_loss, class_loss = self.criterion(g_x, p_yi_x,label_hot_vec)#(h_x, g_x, p_y_x, p_yi_x,label_hot_vec)
+
+                if self.args.multiGPU:
+                    loss = loss.mean()
+
                 tr_loss += loss.item()
                 em_loss_t += em_loss
                 cls_loss_t +=class_loss
@@ -183,6 +197,7 @@ if __name__ == "__main__":
     parser.add_argument('--epochs', type=int, default=10)
     parser.add_argument('--save_epoch', type=int, default=1)
     parser.add_argument('--learning_rate', type=float, default=1e-4)
+    parser.add_argument("--wstep",type=float, default=0.1, help = 'warm up step with resect to toal iteration. Default 0.1')
     parser.add_argument('--model_dir', type=str, default="/media/abhidip/2F1499756FA9B115/iamge_action/Gauss1", help='model name to be saved')
     parser.add_argument('--load', type=str, default=None, help='Load the model (usually the fine-tuned model).')
     parser.add_argument('--dump', type=str, default=None, help='path to save the output')

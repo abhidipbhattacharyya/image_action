@@ -1,15 +1,40 @@
 import torch.nn as nn
 import torch
+import torch.nn.functional as F
 
 
 class Mixture_loss(nn.Module):
-    def __init__(self):
+    def __init__(self, num_of_mixture = 16):
         super(Mixture_loss, self).__init__()
         self.label_loss = nn.BCELoss()
+        self.num_of_mixture = num_of_mixture
 
-    def forward(self,h_x,g_x,p_y, p_yi_x, labels):
+    def forward(self,g_x,p_yi_x, labels):
 
-        p_y = p_y.unsqueeze(dim =-1)
+        #p_yi_x = p_yi_x.view(p_yi_x.size(0),-1,self.num_classes) # bs x K x num_of_class
+            #print('p_yi_x shape {}'.format(p_yi_x.size()))
+        #with torch.no_grad():
+        label = labels.detach().unsqueeze(dim =1) #bs x 1 x num clas
+        label = torch.repeat_interleave(label, repeats=self.num_of_mixture, dim=1) #bs x self.num_of_mixture x num clas
+        label_c = 1 - label
+
+        p_yi_x_c = 1 - p_yi_x
+        #print('label shape {}'.format(label.size()))
+        #print('label  {}'.format(label ))
+        p_yi_x1 = p_yi_x * label + label_c * p_yi_x_c
+        #print('pyix after {}'.format(p_yi_x))
+        p_y_x = torch.prod(p_yi_x1, dim = -1 )#bs x num of mix
+        #print('pyx shape {}'.format(p_y_x.size()))
+        #print(p_y_x.type())
+        h_x = g_x * p_y_x
+        #print(h_x)
+        h_x = F.softmax(h_x, dim = -1) #bs x num of mix
+
+            #print('h_x {}'.format(h_x.size()))
+            #print(h_x)
+            #return g_x, p_y_x, h_x, p_yi_x
+
+        p_y = p_y_x .unsqueeze(dim =-1)
         log_py = torch.log(p_y) #n x k x 1 if not unsqueeze
         #print('log py {}'.format(p_y))
 
